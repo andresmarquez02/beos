@@ -1,0 +1,1292 @@
+{
+    "info": {
+        "name": "Beos Products API",
+        "description": "REST API for products with multi-currency prices (Laravel 13, Sanctum). 7 endpoints under `/api/v1`.\n\n**Usage**\n1. Start the API (`php artisan migrate:fresh --seed` and `php artisan serve`); change `base_url` if it is not `http://localhost:8000/api/v1`.\n2. Run the collection with the Collection Runner: Products, then Error cases. Each request stores the variables the next ones need.\n\n**Authentication**: there is no login endpoint. The collection includes two demo tokens created by the seeder (`DEMO_ADMIN_TOKEN` and `DEMO_VIEWER_TOKEN` in `.env.example`) in the `{id}|{secret}` format; `1|` and `2|` are the token ids of a freshly seeded database. `token` (admin, read and write) is sent as Bearer for the whole collection; `viewer_token` (read only) is used by the 403 cases. To issue a new token: `php artisan api:token admin@example.com`.\n\n**Variables**: `base_url`, `token`, `viewer_token`, `usd_id` (1) and `eur_id` (2) are currency ids of a freshly seeded database (there is no currency endpoint); `product_id` and `deleted_product_id` are set by the requests.\n\nEvery error response is checked against the unified format `{ message, code, errors?, request_id }`.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "{",
+                    "  if (pm.response.code >= 400) {",
+                    "    pm.test('Unified error format', () => {",
+                    "      const j = pm.response.json();",
+                    "      pm.expect(j).to.have.property('message');",
+                    "      pm.expect(j).to.have.property('code');",
+                    "      pm.expect(j.request_id).to.eql(pm.response.headers.get('X-Request-Id'));",
+                    "    });",
+                    "  }",
+                    "}"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000/api/v1"
+        },
+        {
+            "key": "token",
+            "value": "1|f5f96bf7e681a84fabed161e3128cf8d8a1a9a81fce644f4"
+        },
+        {
+            "key": "viewer_token",
+            "value": "2|a6b35176fab24e259108a0b9e86b468ea6d2f7c3c3766407"
+        },
+        {
+            "key": "usd_id",
+            "value": "1"
+        },
+        {
+            "key": "eur_id",
+            "value": "2"
+        },
+        {
+            "key": "product_id",
+            "value": ""
+        },
+        {
+            "key": "deleted_product_id",
+            "value": ""
+        }
+    ],
+    "item": [
+        {
+            "name": "Products",
+            "description": "The 7 endpoints required by the assessment, in execution order. Prices are a sub-resource of a product, so they run before the product is deleted.",
+            "item": [
+                {
+                    "name": "Create product",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Laptop Pro 14\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"1299.90\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "Creates a product (admin role, `products:write` ability). `currency_id` is the base currency of `price`. All fields are required except `description`; amounts accept up to 2 decimals. Returns `201` with a `Location` header. Stores the id in `product_id`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "  if (pm.response.code === 201) {",
+                                    "    const data = pm.response.json().data;",
+                                    "    pm.test('Location points to the product', () => pm.expect(pm.response.headers.get('Location')).to.eql('/api/v1/products/' + data.id));",
+                                    "    pm.test('Amounts are strings', () => pm.expect(data.price).to.eql('1299.90'));",
+                                    "    pm.test('Includes base currency', () => pm.expect(data.currency.code).to.eql('USD'));",
+                                    "    pm.collectionVariables.set('product_id', data.id);",
+                                    "  }",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "List products",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products?per_page=15&page=1&sort=-id",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-id"
+                                }
+                            ]
+                        },
+                        "description": "Paginated list. Optional parameters: `page`, `per_page` (1-100, default 15), `search` (case-insensitive, on `name`), `currency_id`, `min_price`, `max_price` (inclusive, base price only) and `sort` (`id`, `name`, `price`, `created_at`; `-` prefix for descending, default `-id`)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "  const body = pm.response.json();",
+                                    "  pm.test('Is paginated', () => pm.expect(body).to.have.keys(['data', 'links', 'meta']));",
+                                    "  pm.test('Respects per_page', () => pm.expect(body.meta.per_page).to.eql(15));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get product",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "description": "Returns the product with its base currency embedded."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "  const data = pm.response.json().data;",
+                                    "  pm.test('Is the created product', () => pm.expect(String(data.id)).to.eql(String(pm.collectionVariables.get('product_id'))));",
+                                    "  pm.test('No deleted_at exposed', () => pm.expect(data).to.not.have.property('deleted_at'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Update product",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Laptop Pro 14 (v2)\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"1299.90\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "`PUT` is a full replacement: every required field must be sent (`PATCH` is not supported). Changing `currency_id` does not convert `price`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                    "  pm.test('Name updated', () => pm.expect(pm.response.json().data.name).to.eql('Laptop Pro 14 (v2)'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Prices",
+                    "description": "Prices of the product in other currencies.",
+                    "item": [
+                        {
+                            "name": "Create product price",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/products/{{product_id}}/prices",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "products",
+                                        "{{product_id}}",
+                                        "prices"
+                                    ]
+                                },
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"currency_id\": {{eur_id}},\n    \"price\": \"1199.00\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "description": "Registers the product price in another currency (admin role). The currency must exist and differ from the base currency; one price per currency (`409` if it already exists)."
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "{",
+                                            "  pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                            "  const data = pm.response.json().data;",
+                                            "  pm.test('Location points to the price list', () => pm.expect(pm.response.headers.get('Location')).to.eql('/api/v1/products/' + pm.collectionVariables.get('product_id') + '/prices'));",
+                                            "  pm.test('Price is a string', () => pm.expect(data.price).to.eql('1199.00'));",
+                                            "  pm.test('Includes currency', () => pm.expect(data.currency.code).to.eql('EUR'));",
+                                            "}"
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "name": "List product prices",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/products/{{product_id}}/prices",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "products",
+                                        "{{product_id}}",
+                                        "prices"
+                                    ]
+                                },
+                                "description": "Returns only the additional prices (not the base price), ordered by currency code, not paginated."
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text/javascript",
+                                        "exec": [
+                                            "{",
+                                            "  pm.test('Status 200', () => pm.response.to.have.status(200));",
+                                            "  const data = pm.response.json().data;",
+                                            "  pm.test('One additional price', () => pm.expect(data.length).to.eql(1));",
+                                            "  pm.test('Is the EUR price', () => pm.expect(data[0].currency.code).to.eql('EUR'));",
+                                            "}"
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "Delete product",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "description": "Soft delete: returns `204` with no body. Its prices are kept but no longer accessible. Stores the id in `deleted_product_id` for the 404 cases."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 204', () => pm.response.to.have.status(204));",
+                                    "  pm.collectionVariables.set('deleted_product_id', pm.collectionVariables.get('product_id'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Error cases",
+            "description": "Same endpoints with invalid input or insufficient permissions. Starts by creating its own product with an EUR price and deletes it at the end.",
+            "item": [
+                {
+                    "name": "Setup - create product",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Monitor 27\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"349.00\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "Creates the product used by the error cases."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "  pm.collectionVariables.set('product_id', pm.response.json().data.id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Setup - create EUR price",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}",
+                                "prices"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"currency_id\": {{eur_id}},\n    \"price\": \"329.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "Registers an EUR price so the duplicate case returns `409`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 201', () => pm.response.to.have.status(201));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "401 - Missing token",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "description": "Every endpoint requires `Authorization: Bearer <token>`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 401', () => pm.response.to.have.status(401));",
+                                    "  pm.test('code is unauthenticated', () => pm.expect(pm.response.json().code).to.eql('unauthenticated'));",
+                                    "  pm.test('WWW-Authenticate: Bearer', () => pm.expect(pm.response.headers.get('WWW-Authenticate')).to.eql('Bearer'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "401 - Invalid token",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "1|token-that-does-not-exist",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "A token that does not exist, is malformed or has expired returns `401`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 401', () => pm.response.to.have.status(401));",
+                                    "  pm.test('code is unauthenticated', () => pm.expect(pm.response.json().code).to.eql('unauthenticated'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "403 - Viewer cannot create product",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Laptop Pro 14\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"1299.90\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{viewer_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "The `viewer` role only has `products:read`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 403', () => pm.response.to.have.status(403));",
+                                    "  pm.test('code is forbidden', () => pm.expect(pm.response.json().code).to.eql('forbidden'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "403 - Viewer with invalid body",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{viewer_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Authorization is checked before validation: `403`, not `422`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 403', () => pm.response.to.have.status(403));",
+                                    "  pm.test('code is forbidden', () => pm.expect(pm.response.json().code).to.eql('forbidden'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "403 - Viewer cannot update product",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Laptop Pro 14\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"1299.90\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{viewer_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Write denied to `viewer`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 403', () => pm.response.to.have.status(403));",
+                                    "  pm.test('code is forbidden', () => pm.expect(pm.response.json().code).to.eql('forbidden'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "403 - Viewer cannot delete product",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{viewer_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "The product is not deleted."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 403', () => pm.response.to.have.status(403));",
+                                    "  pm.test('code is forbidden', () => pm.expect(pm.response.json().code).to.eql('forbidden'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "403 - Viewer cannot create price",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}",
+                                "prices"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"currency_id\": {{eur_id}},\n    \"price\": \"10.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{viewer_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "description": "Write denied to `viewer`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 403', () => pm.response.to.have.status(403));",
+                                    "  pm.test('code is forbidden', () => pm.expect(pm.response.json().code).to.eql('forbidden'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "404 - Unknown product",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/999999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "999999"
+                            ]
+                        },
+                        "description": "The message does not reveal whether the product never existed or was deleted."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 404', () => pm.response.to.have.status(404));",
+                                    "  pm.test('code is not_found', () => pm.expect(pm.response.json().code).to.eql('not_found'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "404 - Non-numeric id",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/abc",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "abc"
+                            ]
+                        },
+                        "description": "An id that is not a positive integer returns `404`, never `500`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 404', () => pm.response.to.have.status(404));",
+                                    "  pm.test('code is not_found', () => pm.expect(pm.response.json().code).to.eql('not_found'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "404 - Deleted product",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{deleted_product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{deleted_product_id}}"
+                            ]
+                        },
+                        "description": "A soft-deleted product (from Products / Delete product) is no longer accessible."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 404', () => pm.response.to.have.status(404));",
+                                    "  pm.test('code is not_found', () => pm.expect(pm.response.json().code).to.eql('not_found'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "404 - Prices of unknown product",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/999999/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "999999",
+                                "prices"
+                            ]
+                        },
+                        "description": "Also applies to `POST /products/{id}/prices`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 404', () => pm.response.to.have.status(404));",
+                                    "  pm.test('code is not_found', () => pm.expect(pm.response.json().code).to.eql('not_found'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "405 - PATCH not supported",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"x\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "`PUT` is a full replacement; `PATCH` does not exist."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 405', () => pm.response.to.have.status(405));",
+                                    "  pm.test('code is method_not_allowed', () => pm.expect(pm.response.json().code).to.eql('method_not_allowed'));",
+                                    "  pm.test('Allow header', () => pm.expect(pm.response.headers.get('Allow')).to.include('PUT'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "409 - Duplicate price for a currency",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}",
+                                "prices"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"currency_id\": {{eur_id}},\n    \"price\": \"999.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "The product already has an EUR price (Setup). The existing price does not change."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 409', () => pm.response.to.have.status(409));",
+                                    "  pm.test('code is conflict', () => pm.expect(pm.response.json().code).to.eql('conflict'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "422 - Invalid product",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"\",\n    \"description\": \"14-inch laptop\",\n    \"price\": \"0\",\n    \"currency_id\": {{usd_id}},\n    \"tax_cost\": \"249.00\",\n    \"manufacturing_cost\": \"800.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "`price` must be >= 0.01 and `name` must have 2-255 characters."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 422', () => pm.response.to.have.status(422));",
+                                    "  pm.test('code is validation_error', () => pm.expect(pm.response.json().code).to.eql('validation_error'));",
+                                    "  pm.test('Errors per field', () => pm.expect(Object.keys(pm.response.json().errors)).to.include.members(['price', 'name']));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "422 - Partial update body",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"Name only\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "There is no partial update."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 422', () => pm.response.to.have.status(422));",
+                                    "  pm.test('code is validation_error', () => pm.expect(pm.response.json().code).to.eql('validation_error'));",
+                                    "  pm.test('Required fields missing', () => pm.expect(Object.keys(pm.response.json().errors)).to.include.members(['price', 'currency_id', 'tax_cost', 'manufacturing_cost']));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "422 - Sort outside whitelist",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products?sort=password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "password"
+                                }
+                            ]
+                        },
+                        "description": "Only `id`, `name`, `price` and `created_at` are allowed (optional `-` prefix)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 422', () => pm.response.to.have.status(422));",
+                                    "  pm.test('code is validation_error', () => pm.expect(pm.response.json().code).to.eql('validation_error'));",
+                                    "  pm.test('Error on sort', () => pm.expect(pm.response.json().errors).to.have.property('sort'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "422 - Price in base currency",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}",
+                                "prices"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"currency_id\": {{usd_id}},\n    \"price\": \"10.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "The base price lives only in `products.price`; the base currency does not accept an additional price."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 422', () => pm.response.to.have.status(422));",
+                                    "  pm.test('code is validation_error', () => pm.expect(pm.response.json().code).to.eql('validation_error'));",
+                                    "  pm.test('Error on currency_id', () => pm.expect(pm.response.json().errors).to.have.property('currency_id'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "400 - Malformed JSON",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/products",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": ",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "A JSON body that cannot be decoded returns `400`."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 400', () => pm.response.to.have.status(400));",
+                                    "  pm.test('code is bad_request', () => pm.expect(pm.response.json().code).to.eql('bad_request'));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Cleanup - delete product",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_id}}"
+                            ]
+                        },
+                        "description": "Deletes the product created for the error cases."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "{",
+                                    "  pm.test('Status 204', () => pm.response.to.have.status(204));",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
